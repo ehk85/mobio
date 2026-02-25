@@ -17,21 +17,11 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 const app = express();
 const port = Number(process.env.PORT || 4000);
 const mongoUri = process.env.MONGODB_URI;
-const host = process.env.HOST || '0.0.0.0';
-const clientOrigins = (process.env.CLIENT_ORIGIN ? process.env.CLIENT_ORIGIN.split(',') : [])
-  .map((origin) => origin.trim())
-  .filter(Boolean);
-const devAllowedOrigins = (process.env.DEV_ALLOWED_ORIGINS ? process.env.DEV_ALLOWED_ORIGINS.split(',') : [])
-  .map((origin) => origin.trim())
-  .filter(Boolean);
-const allowAllOrigins = clientOrigins.includes('*');
-const allowedOrigins = new Set(clientOrigins);
-
-if (process.env.NODE_ENV !== 'production') {
-  devAllowedOrigins.forEach((origin) => {
-    allowedOrigins.add(origin);
-  });
-}
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:5174',
+  ...(process.env.CLIENT_ORIGIN ? process.env.CLIENT_ORIGIN.split(',').map((origin) => origin.trim()) : []),
+].filter(Boolean);
 
 const amadeusClientId = process.env.AMADEUS_CLIENT_ID || process.env.VITE_AMADEUS_CLIENT_ID;
 const amadeusClientSecret = process.env.AMADEUS_CLIENT_SECRET || process.env.VITE_AMADEUS_CLIENT_SECRET;
@@ -47,7 +37,7 @@ if (!mongoUri) {
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin || allowAllOrigins || allowedOrigins.has(origin)) {
+      if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
         return;
       }
@@ -975,12 +965,23 @@ app.post('/api/auth/signin', async (req, res) => {
 
 const start = async () => {
   await mongoose.connect(mongoUri);
-  const server = app.listen(port, host, () => {
-    console.log(`Mobio API running on http://${host}:${port}`);
+  const server = app.listen(port, () => {
+    console.log(`Mobio API running on http://localhost:${port}`);
   });
 
   server.on('error', async (error) => {
     if (error?.code === 'EADDRINUSE') {
+      try {
+        const response = await fetch(`http://localhost:${port}/health`);
+        const payload = await response.json().catch(() => null);
+        if (response.ok && payload?.service === 'mobio-auth-api') {
+          console.log(`Mobio API already running on http://localhost:${port}`);
+          process.exit(0);
+          return;
+        }
+      } catch {
+      }
+
       console.error(`Port ${port} déjà utilisé par un autre processus.`);
       process.exit(1);
       return;
