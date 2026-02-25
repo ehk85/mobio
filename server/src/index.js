@@ -47,6 +47,21 @@ app.use(
 );
 app.use(express.json());
 
+app.get('/', (_, res) => {
+  res.json({
+    service: 'mobio-auth-api',
+    ok: true,
+    message: 'Mobio backend is running.',
+    docs: {
+      health: '/health',
+      auth: '/api/auth/signup, /api/auth/signin',
+      payments: '/api/payments/checkout',
+      searchFlights: '/api/search/flights',
+      searchHotels: '/api/search/hotels',
+    },
+  });
+});
+
 const requireAmadeusCredentials = () => {
   if (!amadeusClientId || !amadeusClientSecret) {
     throw new Error('Clés Amadeus manquantes. Ajoutez AMADEUS_CLIENT_ID/SECRET côté serveur.');
