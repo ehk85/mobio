@@ -65,6 +65,9 @@ export const NavBar = ({ userName }: NavBarProps) => {
       </button>
 
       <nav className={`menu menu-main ${mobileOpen ? 'open' : ''}`}>
+        <NavLink to="/" onClick={closeMenu} end>
+          {t('navHome')}
+        </NavLink>
         <NavLink to="/flights" onClick={closeMenu}>
           {t('navFlights')}
         </NavLink>

@@ -1,47 +1,156 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { searchFlights } from '../services/amadeus';
-import type { FlightOffer } from '../types';
+import { useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { fetchMostBookedDestinations, searchFlights } from '../services/amadeus';
 import { useI18n } from '../context/I18nContext';
 import { airportLabel, extractIataCode, filterAirportSuggestions } from '../data/searchSuggestions';
 
+type TopDestinationDeal = {
+  destination: string;
+  rank: number;
+  travelersScore: number;
+  cheapestPrice: number | null;
+  currency: string;
+  airline: string;
+  image: string;
+  label: string;
+};
+
+const DESTINATION_META: Record<string, { label: string; image: string }> = {
+  LIS: {
+    label: 'Lisbon, Portugal',
+    image: 'https://images.unsplash.com/photo-1471623817296-aa07ae5c9f47?auto=format&fit=crop&w=900&q=80',
+  },
+  BCN: {
+    label: 'Barcelona, Spain',
+    image: 'https://images.unsplash.com/photo-1539037116277-4db20889f2d4?auto=format&fit=crop&w=900&q=80',
+  },
+  ROM: {
+    label: 'Rome, Italy',
+    image: 'https://images.unsplash.com/photo-1526481280695-3c4691f75e82?auto=format&fit=crop&w=900&q=80',
+  },
+  MAD: {
+    label: 'Madrid, Spain',
+    image: 'https://images.unsplash.com/photo-1543783207-ec64e4d95325?auto=format&fit=crop&w=900&q=80',
+  },
+  LON: {
+    label: 'London, United Kingdom',
+    image: 'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?auto=format&fit=crop&w=900&q=80',
+  },
+};
+
 export const HomePage = () => {
   const { t } = useI18n();
+  const navigate = useNavigate();
   const [tripType, setTripType] = useState<'one-way' | 'round-trip' | 'multi-city'>('one-way');
   const [origin, setOrigin] = useState('Tokyo, Japan');
   const [destination, setDestination] = useState('Berlin, Germany');
   const [departureDate, setDepartureDate] = useState('2026-10-11');
   const [returnDate, setReturnDate] = useState('2026-12-15');
-  const [results, setResults] = useState<FlightOffer[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [topDeals, setTopDeals] = useState<TopDestinationDeal[]>([]);
+  const [topDealsLoading, setTopDealsLoading] = useState(true);
+  const [topDealsError, setTopDealsError] = useState<string | null>(null);
 
   const originSuggestions = filterAirportSuggestions(origin);
   const destinationSuggestions = filterAirportSuggestions(destination);
 
   const runSearch = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await searchFlights(
-        {
-          origin: extractIataCode(origin, 'CDG'),
-          destination: extractIataCode(destination, 'LIS'),
-          departureDate,
-          travelers: 1,
-        },
-        {
-          directOnly: false,
-        }
-      );
-      setResults(data);
-    } catch {
-      setError(t('flightsError'));
-      setResults([]);
-    } finally {
-      setLoading(false);
-    }
+    setLoading(true);
+    setError(null);
+    const params = new URLSearchParams({
+      origin: extractIataCode(origin, 'CDG'),
+      destination: extractIataCode(destination, 'LIS'),
+      departureDate,
+      travelers: '1',
+      travelClass: 'ECONOMY',
+    });
+    navigate(`/flights?${params.toString()}`);
   };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadTopDeals = async () => {
+      setTopDealsLoading(true);
+      setTopDealsError(null);
+
+      try {
+        const period = new Date().toISOString().slice(0, 7);
+        const popular = await fetchMostBookedDestinations('PAR', period, 3);
+
+        const departureSeed = new Date();
+        departureSeed.setDate(departureSeed.getDate() + 28);
+        const departureDate = departureSeed.toISOString().split('T')[0];
+
+        const resolved = await Promise.all(
+          popular.map(async (destination) => {
+            let cheapestPrice: number | null = null;
+            let currency = 'EUR';
+            let airline = '-';
+
+            try {
+              const offers = await searchFlights(
+                {
+                  origin: 'CDG',
+                  destination: destination.destination,
+                  departureDate,
+                  travelers: 1,
+                },
+                { directOnly: false }
+              );
+
+              if (offers.length > 0) {
+                const cheapest = offers.reduce((best, current) => (current.price < best.price ? current : best), offers[0]);
+                cheapestPrice = cheapest.price;
+                currency = cheapest.currency;
+                airline = cheapest.airline;
+              }
+            } catch {
+            }
+
+            const meta = DESTINATION_META[destination.destination] ?? {
+              label: destination.destination,
+              image:
+                'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&w=900&q=80',
+            };
+
+            return {
+              destination: destination.destination,
+              rank: destination.rank,
+              travelersScore: destination.travelersScore,
+              cheapestPrice,
+              currency,
+              airline,
+              image: meta.image,
+              label: meta.label,
+            } satisfies TopDestinationDeal;
+          })
+        );
+
+        if (cancelled) return;
+
+        setTopDeals(resolved);
+
+        if (resolved.length === 0) {
+          setTopDealsError(t('flightsError'));
+        }
+      } catch {
+        if (cancelled) return;
+        setTopDeals([]);
+        setTopDealsError(t('flightsError'));
+      } finally {
+        if (!cancelled) {
+          setTopDealsLoading(false);
+        }
+      }
+    };
+
+    void loadTopDeals();
+    return () => {
+      cancelled = true;
+    };
+  }, [t]);
 
   return (
     <main className="layout landing-layout">
@@ -100,7 +209,7 @@ export const HomePage = () => {
               />
             </label>
             <button className="search-btn" onClick={runSearch} disabled={loading}>
-              {loading ? '...' : '⌕'}
+              {loading ? t('commonLoading') : t('commonSearch')}
             </button>
           </div>
           <datalist id="home-origin-list">
@@ -117,56 +226,27 @@ export const HomePage = () => {
         </div>
       </section>
 
-      {results.length > 0 && (
-        <section className="section-block">
-          <h2>{t('homeFlightResults')}</h2>
-          <div className="result-row">
-            {results.slice(0, 4).map((item) => (
-              <article className="small-card" key={item.id}>
-                <p className="small-card-title">{item.airline}</p>
-                <p>
-                  {item.from} → {item.to}
-                </p>
-                <p>
-                  {item.price} {item.currency}
-                </p>
-              </article>
-            ))}
-          </div>
-        </section>
-      )}
-
       <section className="section-block">
         <h2>{t('homeTopDealsTitle')}</h2>
         <p>{t('homeTopDealsDesc')}</p>
-        <div className="deals-grid">
-          <article className="deal-lg">
-            <img
-              src="https://images.unsplash.com/photo-1540339832862-474599807836?auto=format&fit=crop&w=900&q=80"
-              alt="Luxury cabin"
-            />
-            <div>
-              <span>DTOUR2023</span>
-              <h3>LUXURY TRAVEL AND AIRLINES</h3>
-              <p>Luxury travel and airlines offer opulence, comfort and exclusivity.</p>
-              <button className="pill">Learn More</button>
-            </div>
-          </article>
-          <article className="deal-sm">
-            <img
-              src="https://images.unsplash.com/photo-1564501049412-61c2a3083791?auto=format&fit=crop&w=900&q=80"
-              alt="Hotel booking"
-            />
-            <strong>HOTEL BOOKINGS</strong>
-          </article>
-          <article className="deal-sm">
-            <img
-              src="https://images.unsplash.com/photo-1576675784201-0e142b423952?auto=format&fit=crop&w=900&q=80"
-              alt="Domestic booking"
-            />
-            <strong>BOOK DOMESTIC</strong>
-          </article>
-        </div>
+        {topDealsLoading && <p>{t('commonLoading')}</p>}
+        {topDealsError && !topDealsLoading && <p className="error">{topDealsError}</p>}
+        {!topDealsLoading && !topDealsError && (
+          <div className="top-destination-row">
+            {topDeals.map((deal) => (
+              <article key={`${deal.destination}-${deal.rank}`} className="card top-destination-card">
+                <img src={deal.image} alt={deal.label} />
+                <div>
+                  <strong>{deal.label}</strong>
+                  <p>#{deal.rank}</p>
+                  <p>{t('homePopularityScore', { score: deal.travelersScore })}</p>
+                  <p>{deal.cheapestPrice === null ? t('homePricePending') : `${deal.cheapestPrice} ${deal.currency}`}</p>
+                  <small>{deal.airline}</small>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="section-block" id="trains">
@@ -208,16 +288,12 @@ export const HomePage = () => {
             />
             <strong>MOXY NYC DOWNTOWN</strong>
           </article>
-          <article className="hotel-card featured">
+          <article className="hotel-card">
             <img
               src="https://images.unsplash.com/photo-1613977257363-707ba9348227?auto=format&fit=crop&w=900&q=80"
               alt="Hotel Tropical Daisy"
             />
             <strong>HOTEL TROPICAL DAISY</strong>
-            <div className="hotel-meta">
-              <span>122 km from city center</span>
-              <button>Book Now</button>
-            </div>
           </article>
           <article className="hotel-card" id="buses">
             <img

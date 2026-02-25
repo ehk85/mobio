@@ -1,5 +1,5 @@
 import { env } from '../config/env';
-import type { HotelOffer, HotelSearchParams, SearchFilters } from '../types';
+import type { HotelOffer, HotelSearchParams, HotelSuggestion, SearchFilters } from '../types';
 
 const getNights = (checkInDate: string, checkOutDate: string) => {
   const start = new Date(`${checkInDate}T00:00:00Z`).getTime();
@@ -60,5 +60,47 @@ export const searchHotels = async (
   }
 
   const data = (await response.json()) as { results?: HotelOffer[] };
+  return data.results ?? [];
+};
+
+export const fetchHotelSuggestions = async (keyword: string): Promise<HotelSuggestion[]> => {
+  const normalized = keyword.trim();
+  if (normalized.length < 2) {
+    return [];
+  }
+
+  if (env.apiMode === 'mock') {
+    const mock: HotelSuggestion[] = [
+      {
+        id: 'mock-hotel-lisbon',
+        type: 'hotel',
+        label: 'City Central Hotel',
+        city: 'Lisbon',
+        cityCode: 'LIS',
+        hotelId: 'MOCK1',
+      },
+      {
+        id: 'mock-city-lisbon',
+        type: 'city',
+        label: 'Lisbon (PT)',
+        city: 'Lisbon',
+        cityCode: 'LIS',
+        hotelId: null,
+      },
+    ];
+
+    return mock.filter((item) =>
+      `${item.label} ${item.city} ${item.cityCode}`.toLowerCase().includes(normalized.toLowerCase())
+    );
+  }
+
+  const query = new URLSearchParams({ keyword: normalized });
+  const response = await fetch(`${env.apiServerUrl}/search/hotels/suggestions?${query.toString()}`);
+
+  if (!response.ok) {
+    return [];
+  }
+
+  const data = (await response.json()) as { results?: HotelSuggestion[] };
   return data.results ?? [];
 };

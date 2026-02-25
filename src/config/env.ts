@@ -5,11 +5,13 @@ const required = (value: string | undefined, key: string) => {
   return value;
 };
 
+const apiServerUrl = import.meta.env.VITE_API_SERVER_URL ?? '/api';
+
 export const env = {
   apiMode: import.meta.env.VITE_API_MODE ?? 'mock',
-  apiServerUrl: import.meta.env.VITE_API_SERVER_URL ?? 'http://localhost:4000/api',
-  authServerUrl: import.meta.env.VITE_AUTH_SERVER_URL ?? 'http://localhost:4000/api/auth',
-  paymentServerUrl: import.meta.env.VITE_PAYMENT_SERVER_URL,
+  apiServerUrl,
+  authServerUrl: import.meta.env.VITE_AUTH_SERVER_URL ?? `${apiServerUrl}/auth`,
+  paymentServerUrl: import.meta.env.VITE_PAYMENT_SERVER_URL ?? `${apiServerUrl}/payments`,
   amadeusClientId: import.meta.env.VITE_AMADEUS_CLIENT_ID,
   amadeusClientSecret: import.meta.env.VITE_AMADEUS_CLIENT_SECRET,
   hotelsApiKey: import.meta.env.VITE_HOTELS_API_KEY,

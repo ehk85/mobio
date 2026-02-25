@@ -16,8 +16,8 @@ type CustomerFormData = {
 
 export const CartPage = () => {
   const { t } = useI18n();
-  const { items, count, totalAmount, currency, removeItem, clearCart } = useCart();
-  const [paymentMode, setPaymentMode] = useState<'hotel' | 'online'>('online');
+  const { items, count, totalAmount, currency, removeItem, updateItemQuantity } = useCart();
+  const [paymentMode, setPaymentMode] = useState<'card' | 'wallet' | 'split'>('card');
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -38,8 +38,9 @@ export const CartPage = () => {
       const result = await processPayment({
         amount: totalAmount,
         currency,
-        reservationType: paymentMode === 'online' ? 'flight' : 'hotel',
+        reservationType: 'flight',
         reservationId: `cart-${Date.now()}`,
+        paymentMode,
       });
 
       if (result.status === 'success') {
@@ -47,19 +48,19 @@ export const CartPage = () => {
           userId: user.id,
           amount: totalAmount,
           currency,
-          paymentMode,
+          paymentMode: 'online',
           paymentReference: result.reference,
           customer,
           items: items.map((item) => ({
             cartItemId: item.id,
             type: item.type,
-            title: item.title,
+            title: `${item.title} x${item.quantity}`,
             subtitle: item.subtitle,
-            amount: item.amount,
+            amount: Number((item.amount * item.quantity).toFixed(2)),
             currency: item.currency,
           })),
         });
-        clearCart();
+        window.location.reload();
         setMessage(t('cartHistorySaved'));
         return;
       }
@@ -73,46 +74,120 @@ export const CartPage = () => {
   };
 
   return (
-    <main className="layout section-page-layout reservation-layout">
+    <main className="layout section-page-layout reservation-layout cart-modern-layout">
       <section className="section-page-header">
         <p className="hero-kicker">RESERVATION</p>
         <h1>{t('cartTitle')}</h1>
         <p>{t('cartSubtitle')}</p>
       </section>
 
-      <section className="card booking-overview-card">
-        <div className="booking-overview-head">
-          <strong>{t('cartItemsCount', { count })}</strong>
-          <button onClick={clearCart}>{t('cartClear')}</button>
-        </div>
+      <section className="cart-modern-grid">
+        <article className="card cart-modern-main">
+          <header className="cart-modern-head">
+            <span>Product</span>
+            <span>Quantity</span>
+            <span>Total</span>
+            <span>Action</span>
+          </header>
 
-        <div className="booking-list">
-          {items.map((item) => (
-            <article className="booking-row" key={item.id}>
-              <div>
-                <h4>{item.title}</h4>
-                <p>{item.subtitle}</p>
-              </div>
-              <div className="booking-row-side">
-                <strong>
-                  {item.amount} {item.currency}
-                </strong>
-                <button onClick={() => removeItem(item.id)}>{t('cartRemove')}</button>
-              </div>
-            </article>
-          ))}
-          {items.length === 0 && <p className="empty-copy">{t('cartEmpty')}</p>}
-        </div>
+          <div className="cart-modern-list">
+            {items.map((item) => {
+              const lineTotal = Number((item.amount * item.quantity).toFixed(2));
+              return (
+                <article className="cart-modern-row" key={item.id}>
+                  <div className="cart-modern-product">
+                    <img
+                      src={`https://picsum.photos/seed/cart-${item.id}/120/120`}
+                      alt={item.title}
+                      loading="lazy"
+                    />
+                    <div>
+                      <strong>{item.title}</strong>
+                      <p>{item.subtitle}</p>
+                    </div>
+                  </div>
 
-        <div className="booking-total-row">
-          <span>{t('cartTotal')}</span>
-          <strong>
-            {totalAmount} {currency}
-          </strong>
-        </div>
+                  <div className="cart-qty-group">
+                    <button
+                      type="button"
+                      onClick={() => updateItemQuantity(item.id, item.quantity - 1)}
+                      disabled={item.quantity <= 1}
+                    >
+                      −
+                    </button>
+                    <span>{item.quantity}</span>
+                    <button type="button" onClick={() => updateItemQuantity(item.id, item.quantity + 1)}>
+                      +
+                    </button>
+                  </div>
+
+                  <strong className="cart-line-total">
+                    ${lineTotal.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                  </strong>
+
+                  <button className="cart-trash-btn" onClick={() => removeItem(item.id)}>
+                    🗑
+                  </button>
+                </article>
+              );
+            })}
+            {items.length === 0 && <p className="empty-copy">{t('cartEmpty')}</p>}
+          </div>
+        </article>
+
+        <aside className="card cart-modern-summary">
+          <h3>Order Summary</h3>
+          <div className="cart-summary-row">
+            <span>Sub Total</span>
+            <strong>
+              {totalAmount.toFixed(2)} {currency}
+            </strong>
+          </div>
+          <div className="cart-summary-row muted">
+            <span>Items</span>
+            <span>{count}</span>
+          </div>
+          <div className="cart-summary-row total">
+            <span>{t('cartTotal')}</span>
+            <strong>
+              {totalAmount.toFixed(2)} {currency}
+            </strong>
+          </div>
+
+          <div className="cart-payment-modes">
+            <p>Payment Method</p>
+            <label className={`cart-pay-chip ${paymentMode === 'card' ? 'active' : ''}`}>
+              <input
+                type="radio"
+                name="paymentMode"
+                checked={paymentMode === 'card'}
+                onChange={() => setPaymentMode('card')}
+              />
+              Visa / Mastercard
+            </label>
+            <label className={`cart-pay-chip ${paymentMode === 'wallet' ? 'active' : ''}`}>
+              <input
+                type="radio"
+                name="paymentMode"
+                checked={paymentMode === 'wallet'}
+                onChange={() => setPaymentMode('wallet')}
+              />
+              PayPal / Apple Pay / Google Pay
+            </label>
+            <label className={`cart-pay-chip ${paymentMode === 'split' ? 'active' : ''}`}>
+              <input
+                type="radio"
+                name="paymentMode"
+                checked={paymentMode === 'split'}
+                onChange={() => setPaymentMode('split')}
+              />
+              Klarna / Alma
+            </label>
+          </div>
+        </aside>
       </section>
 
-      <section className="card reservation-confirm-card">
+      <section className="card reservation-confirm-card cart-modern-form-card">
         <h3>{t('cartConfirmTitle')}</h3>
         <form
           className="grid"
@@ -157,27 +232,8 @@ export const CartPage = () => {
             <input name="notes" />
           </label>
 
-          <label className="checkbox-row">
-            <input
-              type="radio"
-              name="paymentMode"
-              checked={paymentMode === 'hotel'}
-              onChange={() => setPaymentMode('hotel')}
-            />
-            {t('cartPayHotel')}
-          </label>
-          <label className="checkbox-row">
-            <input
-              type="radio"
-              name="paymentMode"
-              checked={paymentMode === 'online'}
-              onChange={() => setPaymentMode('online')}
-            />
-            {t('cartPayOnline')}
-          </label>
-
-          <button className="primary" type="submit" disabled={loading}>
-            {loading ? t('cartValidating') : t('cartConfirm')}
+          <button className="primary cart-checkout-btn" type="submit" disabled={loading}>
+            {loading ? t('cartValidating') : 'Checkout Now'}
           </button>
         </form>
 
