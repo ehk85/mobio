@@ -1,0 +1,15 @@
+{
+    "results":  [
+                    {
+                        "id":  "XNFGG33R8I",
+                        "name":  "Hotel Indigo Gran Via",
+                        "city":  "MAD",
+                        "stars":  3,
+                        "pricePerNight":  229,
+                        "totalPrice":  687,
+                        "nights":  3,
+                        "currency":  "EUR",
+                        "rating":  0
+                    }
+                ]
+}
