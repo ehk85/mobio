@@ -902,7 +902,11 @@ app.get('/api/search/hotels/suggestions', async (req, res) => {
 });
 
 app.get('/health', (_, res) => {
-  res.json({ ok: true, service: 'mobio-auth-api' });
+  res.json({
+    ok: true,
+    service: 'mobio-auth-api',
+    mongoConnected: mongoose.connection.readyState === 1,
+  });
 });
 
 app.post('/api/auth/signup', async (req, res) => {
@@ -964,7 +968,6 @@ app.post('/api/auth/signin', async (req, res) => {
 });
 
 const start = async () => {
-  await mongoose.connect(mongoUri);
   const server = app.listen(port, () => {
     console.log(`Mobio API running on http://localhost:${port}`);
   });
@@ -990,6 +993,21 @@ const start = async () => {
     console.error('Erreur serveur:', error);
     process.exit(1);
   });
+
+  const mongoConnectTimeoutMs = Number(process.env.MONGODB_CONNECT_TIMEOUT_MS ?? 15000);
+  console.log(`[BOOT] Connecting to MongoDB (timeout: ${mongoConnectTimeoutMs}ms)...`);
+
+  try {
+    await mongoose.connect(mongoUri, {
+      serverSelectionTimeoutMS: mongoConnectTimeoutMs,
+      connectTimeoutMS: mongoConnectTimeoutMs,
+      socketTimeoutMS: 30000,
+    });
+    console.log('[BOOT] MongoDB connected.');
+  } catch (error) {
+    console.error('[BOOT] MongoDB connection failed:', error instanceof Error ? error.message : error);
+    console.error('[BOOT] The API stays up for diagnostics, but DB-backed endpoints may fail until MongoDB is reachable.');
+  }
 };
 
 start().catch((error) => {
