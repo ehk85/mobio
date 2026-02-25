@@ -1,12 +1,13 @@
-import { useState } from 'react';
-import { searchHotels } from '../services/hotelsApi';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { fetchHotelSuggestions, searchHotels } from '../services/hotelsApi';
 import { useCart } from '../context/CartContext';
-import type { HotelOffer } from '../types';
+import type { HotelOffer, HotelSuggestion } from '../types';
 import { useI18n } from '../context/I18nContext';
-import { filterCitySuggestions } from '../data/searchSuggestions';
 
 export const HotelsPage = () => {
   const { t } = useI18n();
+  const [searchParams] = useSearchParams();
   const { addHotel } = useCart();
   const [city, setCity] = useState('Lisbon');
   const [guests, setGuests] = useState(2);
@@ -15,7 +16,71 @@ export const HotelsPage = () => {
   const [results, setResults] = useState<HotelOffer[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const cityMatches = filterCitySuggestions(city);
+  const [suggestions, setSuggestions] = useState<HotelSuggestion[]>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  useEffect(() => {
+    const queryCity = searchParams.get('city');
+    const queryGuests = Number(searchParams.get('guests') ?? '2');
+    const queryCheckIn = searchParams.get('checkInDate');
+    const queryCheckOut = searchParams.get('checkOutDate');
+
+    if (!queryCity || !queryCheckIn || !queryCheckOut) {
+      return;
+    }
+
+    const normalizedGuests = Number.isFinite(queryGuests) && queryGuests > 0 ? queryGuests : 2;
+    setCity(queryCity);
+    setGuests(normalizedGuests);
+    setCheckInDate(queryCheckIn);
+    setCheckOutDate(queryCheckOut);
+
+    void (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await searchHotels(
+          {
+            city: queryCity,
+            checkInDate: queryCheckIn,
+            checkOutDate: queryCheckOut,
+            guests: normalizedGuests,
+          },
+          {}
+        );
+        setResults(data);
+      } catch {
+        setError(t('hotelsError'));
+        setResults([]);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [searchParams, t]);
+
+  useEffect(() => {
+    const keyword = city.trim();
+    if (keyword.length < 2) {
+      setSuggestions([]);
+      setSuggestionsLoading(false);
+      return;
+    }
+
+    const timer = window.setTimeout(async () => {
+      setSuggestionsLoading(true);
+      try {
+        const data = await fetchHotelSuggestions(keyword);
+        setSuggestions(data);
+      } finally {
+        setSuggestionsLoading(false);
+      }
+    }, 280);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [city]);
 
   const runSearch = async () => {
     setLoading(true);
@@ -51,7 +116,49 @@ export const HotelsPage = () => {
         <div className="reservation-grid">
           <label>
             {t('hotelsCity')}
-            <input value={city} onChange={(e) => setCity(e.target.value)} list="hotels-city-list" />
+            <div className="hotel-city-field">
+              <input
+                value={city}
+                onChange={(e) => {
+                  setCity(e.target.value);
+                  setShowSuggestions(true);
+                }}
+                onFocus={() => setShowSuggestions(true)}
+                onBlur={() => {
+                  window.setTimeout(() => setShowSuggestions(false), 120);
+                }}
+                placeholder="Lisbon"
+                autoComplete="off"
+              />
+              {showSuggestions && (suggestionsLoading || suggestions.length > 0) && (
+                <div className="hotel-suggestions-panel">
+                  {suggestionsLoading && <p className="hotel-suggestions-loading">{t('commonLoading')}</p>}
+                  {!suggestionsLoading &&
+                    suggestions.map((suggestion) => (
+                      <button
+                        key={suggestion.id}
+                        type="button"
+                        className="hotel-suggestion-item"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => {
+                          setCity(suggestion.city);
+                          setShowSuggestions(false);
+                        }}
+                      >
+                        <span className={`hotel-suggestion-kind ${suggestion.type}`}>
+                          {suggestion.type === 'hotel' ? 'Hotel' : 'City'}
+                        </span>
+                        <span className="hotel-suggestion-content">
+                          <strong>{suggestion.label}</strong>
+                          <small>
+                            {suggestion.city} · {suggestion.cityCode}
+                          </small>
+                        </span>
+                      </button>
+                    ))}
+                </div>
+              )}
+            </div>
           </label>
           <label>
             {t('hotelsCheckIn')}
@@ -74,11 +181,6 @@ export const HotelsPage = () => {
             {loading ? t('commonLoading') : t('hotelsCheckAvailability')}
           </button>
         </div>
-        <datalist id="hotels-city-list">
-          {cityMatches.map((name) => (
-            <option key={name} value={name} />
-          ))}
-        </datalist>
         {error && <p className="error">{error}</p>}
       </section>
 

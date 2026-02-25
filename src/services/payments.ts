@@ -5,6 +5,7 @@ export interface PaymentPayload {
   currency: string;
   reservationType: 'flight' | 'hotel';
   reservationId: string;
+  paymentMode?: 'card' | 'wallet' | 'split';
 }
 
 export interface PaymentResult {

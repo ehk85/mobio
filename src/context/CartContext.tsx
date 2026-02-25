@@ -10,6 +10,7 @@ export type CartItem =
       subtitle: string;
       amount: number;
       currency: string;
+      quantity: number;
       payload: FlightOffer;
     }
   | {
@@ -19,6 +20,7 @@ export type CartItem =
       subtitle: string;
       amount: number;
       currency: string;
+      quantity: number;
       payload: HotelOffer;
     };
 
@@ -30,6 +32,7 @@ interface CartContextValue {
   addFlight: (flight: FlightOffer) => void;
   addHotel: (hotel: HotelOffer) => void;
   removeItem: (id: string) => void;
+  updateItemQuantity: (id: string, quantity: number) => void;
   clearCart: () => void;
 }
 
@@ -41,7 +44,12 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
   const addFlight = (flight: FlightOffer) => {
     const itemId = `flight-${flight.id}`;
     setItems((current) => {
-      if (current.some((item) => item.id === itemId)) return current;
+      const existing = current.find((item) => item.id === itemId);
+      if (existing) {
+        return current.map((item) =>
+          item.id === itemId ? { ...item, quantity: Math.min(99, item.quantity + 1) } : item
+        );
+      }
       return [
         ...current,
         {
@@ -51,6 +59,7 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
           subtitle: `${flight.airline} • ${flight.direct ? 'Direct' : 'Escale'}`,
           amount: flight.price,
           currency: flight.currency,
+          quantity: 1,
           payload: flight,
         },
       ];
@@ -60,7 +69,12 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
   const addHotel = (hotel: HotelOffer) => {
     const itemId = `hotel-${hotel.id}`;
     setItems((current) => {
-      if (current.some((item) => item.id === itemId)) return current;
+      const existing = current.find((item) => item.id === itemId);
+      if (existing) {
+        return current.map((item) =>
+          item.id === itemId ? { ...item, quantity: Math.min(99, item.quantity + 1) } : item
+        );
+      }
       return [
         ...current,
         {
@@ -70,6 +84,7 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
           subtitle: `${hotel.city} • ${hotel.stars}★`,
           amount: hotel.pricePerNight,
           currency: hotel.currency,
+          quantity: 1,
           payload: hotel,
         },
       ];
@@ -80,21 +95,27 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     setItems((current) => current.filter((item) => item.id !== id));
   };
 
+  const updateItemQuantity = (id: string, quantity: number) => {
+    const safeQuantity = Math.max(1, Math.min(99, Math.round(quantity)));
+    setItems((current) => current.map((item) => (item.id === id ? { ...item, quantity: safeQuantity } : item)));
+  };
+
   const clearCart = () => {
     setItems([]);
   };
 
   const value = useMemo<CartContextValue>(() => {
-    const totalAmount = items.reduce((sum, item) => sum + item.amount, 0);
+    const totalAmount = items.reduce((sum, item) => sum + item.amount * item.quantity, 0);
     const currency = items[0]?.currency ?? 'EUR';
     return {
       items,
-      count: items.length,
+      count: items.reduce((sum, item) => sum + item.quantity, 0),
       totalAmount,
       currency,
       addFlight,
       addHotel,
       removeItem,
+      updateItemQuantity,
       clearCart,
     };
   }, [items]);
